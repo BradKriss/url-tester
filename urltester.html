@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>URL Fetcher</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      line-height: 1.6;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+      color: #333;
+    }
+    h1 {
+      margin-bottom: 20px;
+      color: #2c3e50;
+    }
+    .container {
+      background-color: #f9f9f9;
+      border-radius: 8px;
+      padding: 20px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    }
+    .form-group {
+      margin-bottom: 15px;
+    }
+    .form-group label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: bold;
+    }
+    .input-group {
+      display: flex;
+      margin-bottom: 15px;
+    }
+    input[type="text"] {
+      flex-grow: 1;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 16px;
+    }
+    select {
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      margin-left: 10px;
+      font-size: 16px;
+    }
+    button {
+      background-color: #3498db;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 16px;
+      margin-left: 10px;
+    }
+    button:hover {
+      background-color: #2980b9;
+    }
+    button:disabled {
+      background-color: #95a5a6;
+      cursor: not-allowed;
+    }
+    .loader {
+      display: none;
+      border: 4px solid #f3f3f3;
+      border-top: 4px solid #3498db;
+      border-radius: 50%;
+      width: 30px;
+      height: 30px;
+      animation: spin 2s linear infinite;
+      margin: 20px auto;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    .error {
+      background-color: #ffecec;
+      color: #e74c3c;
+      padding: 10px;
+      border-left: 4px solid #e74c3c;
+      margin-bottom: 20px;
+      display: none;
+      white-space: pre-line;
+      font-family: monospace;
+    }
+    .response-container {
+      margin-top: 20px;
+      display: none;
+    }
+    .response-header {
+      background-color: #eee;
+      padding: 10px;
+      border-radius: 4px 4px 0 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .status-indicator {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      margin-right: 8px;
+    }
+    .success {
+      background-color: #2ecc71;
+    }
+    .failure {
+      background-color: #e74c3c;
+    }
+    .response-body {
+      border: 1px solid #eee;
+      border-top: none;
+      padding: 15px;
+      border-radius: 0 0 4px 4px;
+    }
+    .response-section {
+      margin-bottom: 15px;
+    }
+    .response-section h3 {
+      margin-bottom: 10px;
+    }
+    pre {
+      background-color: #f5f5f5;
+      padding: 10px;
+      border-radius: 4px;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>URL Fetcher</h1>
+    
+    <div class="form-group">
+      <div class="input-group">
+        <input type="text" id="url-input" placeholder="Enter URL (e.g., api.example.com/data)">
+        <select id="response-type">
+          <option value="json">JSON</option>
+          <option value="text">Text</option>
+        </select>
+        <button id="fetch-button">Submit</button>
+      </div>
+    </div>
+    
+    <div id="error" class="error">
+      <p id="error-message"></p>
+    </div>
+    
+    <div id="loader" class="loader"></div>
+    
+    <div id="response-container" class="response-container">
+      <div class="response-header">
+        <h2>Response</h2>
+        <div>
+          <span id="status-indicator" class="status-indicator"></span>
+          <span id="status-text"></span>
+        </div>
+      </div>
+      
+      <div class="response-body">
+        <div class="response-section">
+          <h3>Headers</h3>
+          <pre id="headers-display"></pre>
+        </div>
+        
+        <div class="response-section">
+          <h3>Body</h3>
+          <pre id="body-display"></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Debug mode - set to true to show more console logs
+    const DEBUG = true;
+    
+    // Get DOM elements
+    const urlInput = document.getElementById('url-input');
+    const responseTypeSelect = document.getElementById('response-type');
+    const fetchButton = document.getElementById('fetch-button');
+    const loader = document.getElementById('loader');
+    const errorContainer = document.getElementById('error');
+    const errorMessage = document.getElementById('error-message');
+    const responseContainer = document.getElementById('response-container');
+    const statusIndicator = document.getElementById('status-indicator');
+    const statusText = document.getElementById('status-text');
+    const corsInfo = document.getElementById('cors-info');
+    const headersDisplay = document.getElementById('headers-display');
+    const bodyDisplay = document.getElementById('body-display');
+
+    // Add event listeners
+    fetchButton.addEventListener('click', fetchUrl);
+    urlInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        fetchUrl();
+      }
+    });
+    
+    // Add debug button if in debug mode
+    if (DEBUG) {
+      const debugDiv = document.createElement('div');
+      debugDiv.style.marginTop = '20px';
+      debugDiv.style.textAlign = 'center';
+      
+      const debugBtn = document.createElement('button');
+      debugBtn.textContent = 'Show Network Info';
+      debugBtn.style.backgroundColor = '#3498db';
+      debugBtn.style.color = 'white';
+      debugBtn.style.border = 'none';
+      debugBtn.style.padding = '8px 15px';
+      debugBtn.style.borderRadius = '4px';
+      debugBtn.style.cursor = 'pointer';
+      
+      debugBtn.addEventListener('click', function() {
+        console.log('%c URL Fetcher Debug Info', 'background: #3498db; color: white; font-size: 16px; padding: 5px;');
+        console.log('To debug CORS issues, check the Network tab and look for:');
+        console.log('1. Status code (especially 301, 302, 307 redirects)');
+        console.log('2. Response headers (look for Access-Control-Allow-Origin)');
+        console.log('3. Request headers (especially Origin header)');
+        console.log('4. Error messages in red in the Console tab');
+        
+        alert('Check browser console (F12) for network debugging tips');
+      });
+      
+      debugDiv.appendChild(debugBtn);
+      document.querySelector('.container').appendChild(debugDiv);
+    }
+
+    // Function to fetch URL
+    async function fetchUrl() {
+      // Get the URL from the input
+      const url = urlInput.value.trim();
+      const responseType = responseTypeSelect.value;
+      
+      // Validate URL
+      if (!url) {
+        showError('Please enter a URL');
+        return;
+      }
+      
+      // Show loading state
+      setLoading(true);
+      hideError();
+      hideResponse();
+      
+      try {
+        // Ensure the URL has a protocol
+        let fetchUrl = url;
+        if (!url.startsWith('http://') && !url.startsWith('https://')) {
+          fetchUrl = 'https://' + url;
+        }
+        
+        // Make the fetch request (client-side) with mode credentials and more options
+        const response = await fetch(fetchUrl, {
+          method: 'GET',
+          headers: {
+            'Accept': responseType === 'json' ? 'application/json' : 'text/plain'
+          },
+          mode: 'cors', // Explicitly set CORS mode
+          credentials: 'omit', // Don't send cookies
+          redirect: 'follow', // Follow redirects
+          cache: 'no-cache', // Don't use cache
+          referrerPolicy: 'no-referrer' // Don't send referrer
+        });
+        
+        // Get response headers
+        const headers = {};
+        response.headers.forEach((value, key) => {
+          headers[key] = value;
+        });
+        
+        // If redirected, show the redirected URL
+        let redirectInfo = '';
+        if (response.redirected) {
+          redirectInfo = `\nRedirected to: ${response.url}`;
+          headers['_redirected_to'] = response.url;
+        }
+        
+        // Get response body based on selected type
+        let data;
+        try {
+          if (responseType === 'json') {
+            data = await response.json();
+          } else {
+            data = await response.text();
+          }
+        } catch (err) {
+          // Handle parsing errors
+          if (responseType === 'json') {
+            // If JSON parsing fails, try to get as text
+            data = await response.text();
+            headers['_parse_error'] = 'Failed to parse as JSON';
+          } else {
+            throw err;
+          }
+        }
+        
+        // Display the response
+        displayResponse({
+          status: response.status,
+          statusText: response.statusText,
+          headers: headers,
+          data: data
+        });
+      } catch (err) {
+        // Enhanced error handling
+        let errorDetails = '';
+
+        // Check for common error types and provide more details
+        if (err.name === 'TypeError' && err.message === 'Failed to fetch') {
+          errorDetails = 'This could be due to one of the following reasons:\n' +
+            '1. CORS policy: The server doesn\'t allow cross-origin requests\n' +
+            '2. Network error: Unable to connect to the server\n' +
+            '3. Mixed content: Trying to load HTTP content from an HTTPS page\n' +
+            '4. DNS resolution failure: Invalid domain name\n\n' +
+            'Check your browser\'s Network tab in DevTools for more details.';
+        } else if (err.message.includes('redirect')) {
+          errorDetails = 'There was a problem with a redirect. The server might be redirecting to a URL that doesn\'t allow CORS.';
+        } else if (err.message.includes('certificate')) {
+          errorDetails = 'There\'s an SSL/TLS certificate issue with the website.';
+        }
+
+        showError(`${err.name || 'Error'}: ${err.message || 'Failed to fetch the URL'}\n\n${errorDetails}`);
+      } finally {
+        setLoading(false);
+      }
+    }
+    
+    // Function to display the response
+    function displayResponse(response) {
+      // Set status
+      const isSuccess = response.status >= 200 && response.status < 300;
+      statusIndicator.className = 'status-indicator ' + (isSuccess ? 'success' : 'failure');
+      statusText.textContent = `${response.status} ${response.statusText}`;
+      
+      // Check for CORS headers
+      let corsStatus = '';
+      if (response.headers['access-control-allow-origin']) {
+        const allowOrigin = response.headers['access-control-allow-origin'];
+        corsStatus = allowOrigin === '*' 
+          ? '(CORS: Allowed from anywhere)' 
+          : `(CORS: Allowed from ${allowOrigin})`;
+        corsInfo.style.color = '#2ecc71';
+      } else if (response.status === 200) {
+        corsStatus = '(CORS: Same-origin or no CORS headers)';
+        corsInfo.style.color = '#f39c12';
+      } else if (response.status === 0 || response.type === 'opaque') {
+        corsStatus = '(CORS: Blocked)';
+        corsInfo.style.color = '#e74c3c';
+      }
+      corsInfo.textContent = corsStatus;
+      
+      // Set headers
+      headersDisplay.textContent = JSON.stringify(response.headers, null, 2);
+      
+      // Set body
+      if (typeof response.data === 'object') {
+        bodyDisplay.textContent = JSON.stringify(response.data, null, 2);
+      } else {
+        bodyDisplay.textContent = response.data;
+      }
+      
+      // Show response container
+      responseContainer.style.display = 'block';
+    }
+    
+    // Function to show error
+    function showError(message) {
+      errorMessage.innerHTML = message.replace(/\n/g, '<br>');
+      errorContainer.style.display = 'block';
+      
+      // Also show a minimal response container with error details
+      const networkError = message.includes('CORS policy') || 
+                          message.includes('Failed to fetch');
+      
+      if (networkError) {
+        statusIndicator.className = 'status-indicator failure';
+        statusText.textContent = 'Network Error';
+        corsInfo.textContent = '(CORS: Likely blocked)';
+        corsInfo.style.color = '#e74c3c';
+        
+        headersDisplay.textContent = '// No headers available';
+        bodyDisplay.textContent = '// Cannot access response body due to CORS or network error\n' +
+                                '// Check browser console (F12) and Network tab for more details';
+        
+        responseContainer.style.display = 'block';
+      }
+    }
+    
+    // Function to hide error
+    function hideError() {
+      errorContainer.style.display = 'none';
+    }
+    
+    // Function to hide response
+    function hideResponse() {
+      responseContainer.style.display = 'none';
+    }
+    
+    // Function to set loading state
+    function setLoading(isLoading) {
+      fetchButton.disabled = isLoading;
+      fetchButton.textContent = isLoading ? 'Fetching...' : 'Submit';
+      loader.style.display = isLoading ? 'block' : 'none';
+    }
+  </script>
+</body>
+</html>
