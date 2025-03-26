@@ -195,7 +195,6 @@
     const responseContainer = document.getElementById('response-container');
     const statusIndicator = document.getElementById('status-indicator');
     const statusText = document.getElementById('status-text');
-    const corsInfo = document.getElementById('cors-info');
     const headersDisplay = document.getElementById('headers-display');
     const bodyDisplay = document.getElementById('body-display');
 
@@ -281,29 +280,29 @@
         });
         
         // If redirected, show the redirected URL
-        let redirectInfo = '';
         if (response.redirected) {
-          redirectInfo = `\nRedirected to: ${response.url}`;
           headers['_redirected_to'] = response.url;
         }
         
-        // Get response body based on selected type
-        let data;
-        try {
-          if (responseType === 'json') {
-            data = await response.json();
-          } else {
-            data = await response.text();
+        // Process the response body
+        let responseData;
+        
+        // We need to handle the body carefully to avoid the "body already read" error
+        // Clone the response before reading its body
+        const responseForBody = response.clone();
+        
+        if (responseType === 'json') {
+          try {
+            // Try to parse as JSON
+            responseData = await response.json();
+          } catch (jsonError) {
+            // If JSON parsing fails, get as text instead
+            responseData = await responseForBody.text();
+            headers['_parse_error'] = 'Failed to parse as JSON: ' + jsonError.message;
           }
-        } catch (err) {
-          // Handle parsing errors
-          if (responseType === 'json') {
-            // If JSON parsing fails, try to get as text
-            data = await response.text();
-            headers['_parse_error'] = 'Failed to parse as JSON';
-          } else {
-            throw err;
-          }
+        } else {
+          // Get as text
+          responseData = await response.text();
         }
         
         // Display the response
@@ -311,7 +310,7 @@
           status: response.status,
           statusText: response.statusText,
           headers: headers,
-          data: data
+          data: responseData
         });
       } catch (err) {
         // Enhanced error handling
@@ -332,6 +331,7 @@
         }
 
         showError(`${err.name || 'Error'}: ${err.message || 'Failed to fetch the URL'}\n\n${errorDetails}`);
+        console.error('Fetch error:', err);
       } finally {
         setLoading(false);
       }
@@ -343,23 +343,6 @@
       const isSuccess = response.status >= 200 && response.status < 300;
       statusIndicator.className = 'status-indicator ' + (isSuccess ? 'success' : 'failure');
       statusText.textContent = `${response.status} ${response.statusText}`;
-      
-      // Check for CORS headers
-      let corsStatus = '';
-      if (response.headers['access-control-allow-origin']) {
-        const allowOrigin = response.headers['access-control-allow-origin'];
-        corsStatus = allowOrigin === '*' 
-          ? '(CORS: Allowed from anywhere)' 
-          : `(CORS: Allowed from ${allowOrigin})`;
-        corsInfo.style.color = '#2ecc71';
-      } else if (response.status === 200) {
-        corsStatus = '(CORS: Same-origin or no CORS headers)';
-        corsInfo.style.color = '#f39c12';
-      } else if (response.status === 0 || response.type === 'opaque') {
-        corsStatus = '(CORS: Blocked)';
-        corsInfo.style.color = '#e74c3c';
-      }
-      corsInfo.textContent = corsStatus;
       
       // Set headers
       headersDisplay.textContent = JSON.stringify(response.headers, null, 2);
@@ -387,8 +370,6 @@
       if (networkError) {
         statusIndicator.className = 'status-indicator failure';
         statusText.textContent = 'Network Error';
-        corsInfo.textContent = '(CORS: Likely blocked)';
-        corsInfo.style.color = '#e74c3c';
         
         headersDisplay.textContent = '// No headers available';
         bodyDisplay.textContent = '// Cannot access response body due to CORS or network error\n' +
